@@ -471,10 +471,10 @@ class Bullet(pygame.sprite.Sprite):  # Класс пули
 pygame.init()
 # Генерируем уровень
 green_tank, yellow_tank, base = generate_level(level_map)
-# Заполняем экран белым цветом
-screen.fill('white')
 # Запускаем меню(конструкция для правильной работы интерфейса)
 menu(screen) if __name__ == '__main__' else None
+# Заполняем экран белым цветом
+screen.fill('white')
 # Игра идёт
 game_running = True
 # Запускаем часы
