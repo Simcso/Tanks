@@ -5,9 +5,48 @@ import sys
 import os
 
 
+def load_image(name, color_key=None):  # Получаем имя и ключ
+    # Получаем путь
+    path = os.path.join('data', name)
+    # Получаем путь(конструкция для запуска как exe-файл)
+    fullname = os.path.join(sys._MEIPASS, path) if hasattr(sys, "_MEIPASS") else path
+    # Проверяем существует ли файл
+    if not os.path.isfile(fullname):
+        # Выводим сообщение
+        print(f"Файл с изображением '{fullname}' не найден")
+        # Завершаем программу
+        sys.exit()
+    # Загружаем спрайт
+    image = pygame.image.load(fullname)
+    # Проверяем нужно ли заменить фон
+    if color_key is not None:
+        image = image.convert()
+        if color_key == -1:
+            color_key = image.get_at((0, 0))
+        image.set_colorkey(color_key)
+    else:
+        image = image.convert_alpha()
+    # Возвращаем спрайт
+    return image
+
+
+def load_music(name):  # Получаем имя
+    # Получаем путь
+    path = os.path.join('data', name)
+    # Возвращаем музыку(конструкция для запуска как exe-файл)
+    return pygame.mixer.Sound(os.path.join(sys._MEIPASS, path) if hasattr(sys, "_MEIPASS") else path)
+
+# Запускаем pygame
+pygame.init()
+
 # Основные константы
 FPS = 60
 clock = pygame.time.Clock()
+
+# Загрузка музыки
+menu_music = load_music('menu_music.wav')
+win_music = load_music('win_music.wav')
+lose_music = load_music('lose_music.wav')
 
 
 class Button:  # Класс кнопки
@@ -60,32 +99,11 @@ class Text:  # Класс текста
         self.screen.blit(self.Surface, self.Rect)
 
 
-def load_image(name, color_key=None):  # Получаем имя и ключ
-    # Получаем путь
-    path = os.path.join('data', name)
-    # Получаем путь(конструкция для запуска как exe-файл)
-    fullname = os.path.join(sys._MEIPASS, path) if hasattr(sys, "_MEIPASS") else path
-    # Проверяем существует ли файл
-    if not os.path.isfile(fullname):
-        # Выводим сообщение
-        print(f"Файл с изображением '{fullname}' не найден")
-        # Завершаем программу
-        sys.exit()
-    # Загружаем спрайт
-    image = pygame.image.load(fullname)
-    # Проверяем нужно ли заменить фон
-    if color_key is not None:
-        image = image.convert()
-        if color_key == -1:
-            color_key = image.get_at((0, 0))
-        image.set_colorkey(color_key)
-    else:
-        image = image.convert_alpha()
-    # Возвращаем спрайт
-    return image
-
-
 def menu(screen, restart=False):  # Получаем экран и понимаем нужно ли перезапустить программу
+    # Останавливаем всю музыку
+    pygame.mixer.stop()
+    # Проигрываем музыку меню
+    menu_music.play()
     # Создаём фон нужного размера
     fon = pygame.transform.scale(load_image('fon.png'), (screen.get_width(), screen.get_height()))
     # Накладываем фон на экран
@@ -103,7 +121,7 @@ def menu(screen, restart=False):  # Получаем экран и понима�
             # Проверяем нужно ли перезапустить программу
             if restart:
                 # Перезапускаем программу
-                runpy.run_module(mod_name='main')
+                runpy.run_module('game')
             return  # начинаем игру
         # Проверяем все ивенты
         for event in pygame.event.get():
@@ -117,6 +135,8 @@ def menu(screen, restart=False):  # Получаем экран и понима�
 
 
 def pause(screen):  # Получаем экран
+    # Останавливаем всю музыку
+    pygame.mixer.pause()
     # Создаём кнопки
     resume_game_button = Button(screen, (screen.get_width() - 190) // 2, (screen.get_height() - 100) // 2, 190, 45,
                                 'Продолжить')
@@ -142,12 +162,18 @@ def pause(screen):  # Получаем экран
         for event in pygame.event.get():
             # Проверяем нажата ли клавиша esc или кнопка "Продолжить"
             if (event.type == pygame.KEYDOWN and event.scancode == 41) or resume_game_button.update():
+                # Запускаем всю музыку
+                pygame.mixer.unpause()
                 return  # Продолжаем игру
         pygame.display.flip()
         clock.tick(FPS)
 
 
 def lose(screen):  # Получаем экран
+    # Останавливаем всю музыку
+    pygame.mixer.stop()
+    # Проигрываем музыку проигрыша
+    lose_music.play()
     # Создаём кнопки
     restart_game_button = Button(screen, (screen.get_width() - 220) // 2, (screen.get_height() - 100) // 2, 220, 45,
                                  'Начать заново')
@@ -168,7 +194,7 @@ def lose(screen):  # Получаем экран
         # Проверяем нажата ли кнопка "Начать заново"
         if restart_game_button.update():
             # Перезапускаем программу
-            runpy.run_module(mod_name='main')
+            runpy.run_module('game')
         # Проверяем нажата ли кнопка "Вернуться в меню"
         if return_to_menu_button.update():
             # Запускаем меню
@@ -181,6 +207,10 @@ def lose(screen):  # Получаем экран
 
 
 def win(screen):  # Получаем экран
+    # Останавливаем всю музыку
+    pygame.mixer.stop()
+    # Проигрываем музыку победы
+    win_music.play()
     # Создаём кнопки
     restart_game_button = Button(screen, (screen.get_width() - 220) // 2, (screen.get_height() - 100) // 2, 220, 45,
                                  'Начать заново')
@@ -201,7 +231,7 @@ def win(screen):  # Получаем экран
         # Проверяем нажата ли кнопка "Начать заново"
         if restart_game_button.update():
             # Перезапускаем программу
-            runpy.run_module(mod_name='main')
+            runpy.run_module('game')
         # Проверяем нажата ли кнопка "Вернуться в меню"
         if return_to_menu_button.update():
             # Запускаем меню
