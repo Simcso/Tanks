@@ -1,18 +1,14 @@
 # Импорт библиотек
+import sys
+
 import pygame
-from load_level import load_level
-from wave_algoritm import wave, matrix, trail
-from shoot_algoritm import try_shoot, object_matrix
-from interface import load_image, load_music, menu, pause, lose, win
+import sqlite3
+from tank_algoritm import try_shoot, object_matrix, wave, create_matrix, trail
+from interface import load_image, load_music, select_level_menu, menu, pause, lose, win
 # Основные константы
 FPS = 60
 TILE_WIDTH = TILE_HEIGHT = 60
 VECTORS = {0: [0, 1], 1: [1, 0], 2: [0, -1], 3: [-1, 0]}
-
-# Назначения клавиш
-TANKS = {'G': {'Вперёд': 26, 'Влево': 4, 'Назад': 22, 'Вправо': 7, 'Выстрел': 8},
-         'Y': {'Вперёд': 82, 'Влево': 80, 'Назад': 81, 'Вправо': 79, 'Выстрел': 44},
-         'W': {'Вперёд': 'Вперёд', 'Влево': 'Влево', 'Назад': 'Назад', 'Вправо': 'Вправо', 'Выстрел': 'Выстрел'}}
 
 # Запускаем pygame
 pygame.init()
@@ -27,6 +23,7 @@ grass_group = pygame.sprite.Group()
 friendly_tanks_group = pygame.sprite.Group()
 enemy_tanks_group = pygame.sprite.Group()
 bullets_group = pygame.sprite.Group()
+hp_bars_group = pygame.sprite.Group()
 
 # Создание экрана
 screen = pygame.display.set_mode()
@@ -40,6 +37,8 @@ tile_images = {'unbreakable_wall': load_image('unbreakable_wall.png'),
                'wall': [load_image('wall_6.png', -1), load_image('wall_5.png', -1), load_image('wall_4.png', -1),
                         load_image('wall_3.png', -1), load_image('wall_2.png', -1), load_image('wall_1.png', -1),
                         load_image('wall.png', -1)]}
+hp_bars = {'G': {i: load_image(f'green_hp_bar_{i}.png', -1) for i in range(1, 6)},
+           'Y': {i: load_image(f'yellow_hp_bar_{i}.png', -1) for i in range(1, 6)}}
 fire_image = load_image("fire.png", -1)
 boom_image = load_image("booms.png", -1)
 spawn_image = load_image("spawn.png", -1)
@@ -55,15 +54,9 @@ wall_destroy = load_music('wall_destroy.wav')
 friendly_tank_destroy = load_music('friendly_tank_destroy.wav')
 enemy_tank_destroy = load_music('enemy_tank_destroy.wav')
 
-# Загрузка уровня
-level_map, CONSTANTS = load_level('level')
-
-# Создание матрицы карты(пустые клетки / металлические стены)
-object_matrix = object_matrix(level_map)
-
 
 def generate_level(level):  # Создание спрайтов по полученному уровню
-    green_tank, yellow_tank, base, x, y = None, None, None, None, None
+    green_tank, yellow_tank, base = None, None, None
     # Перебираем каждый символ уровня и создаём нужный объект
     for y in range(len(level)):
         for x in range(len(level[y])):
@@ -86,10 +79,10 @@ def generate_level(level):  # Создание спрайтов по получ�
                 base = Base(x, y)
             elif level[y][x] == 'G':
                 Tile('empty', x, y)
-                green_tank = Tank(x, y, CONSTANTS['GREEN_TANK_VECTOR'], 'G')
+                green_tank = Tank(x, y, CONSTANTS['GREEN_TANK_VECTOR'], 'G', hp_bar=green_hp_bar)
             elif level[y][x] == 'Y':
                 Tile('empty', x, y)
-                yellow_tank = Tank(x, y, CONSTANTS['YELLOW_TANK_VECTOR'], 'Y')
+                yellow_tank = Tank(x, y, CONSTANTS['YELLOW_TANK_VECTOR'], 'Y', hp_bar=yellow_hp_bar)
     # Возвращаем танки и базу
     return green_tank, yellow_tank, base
 
@@ -155,7 +148,7 @@ class Base(pygame.sprite.Sprite):  # Класс базы(короны)
 
 class EnemySpawn(pygame.sprite.Sprite):  # Класс места появления вражеских танков
     def __init__(self, pos_x, pos_y):
-        # Инициализация класса и добавления его в нужную группу спрайтов
+        # Инициализация класса и добавление его в нужную группу спрайтов
         super().__init__(all_sprites)
         # Добавляем текстуру спрайта и задаём переменные
         self.image, self.time, self.can_spawn = tile_images['empty'], 0, True
@@ -183,12 +176,12 @@ class EnemySpawn(pygame.sprite.Sprite):  # Класс места появлен�
 
 
 class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
-    def __init__(self, pos_x, pos_y, vector, color):
+    def __init__(self, pos_x, pos_y, vector, color, hp_bar=None):
         # Инициализация класса и добавления его в нужную группу спрайтов
         super().__init__(friendly_tanks_group, all_sprites)
         # Добавляем текстуру спрайта с нужным вектором и задаём переменные
-        self.color, self.x_list, self.y_list = color, [], []
-        self.image, self.reload, self.hp = pygame.transform.rotate(tanks[self.color], 90 * vector), 0, 3
+        self.color, self.hp_bar, self.hp, self.x_list, self.y_list = color, hp_bar, 5, [], []
+        self.image, self.reload = pygame.transform.rotate(tanks[self.color], 90 * vector), 0
         self.vector, self.can_shoot, self.not_moves = vector, True, True
         self.rect = self.image.get_rect().move(TILE_WIDTH * pos_x, TILE_HEIGHT * pos_y)
 
@@ -228,8 +221,12 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
             AnimatedSprite(boom_image, 15, 1, self.rect.x, self.rect.y, 2, all_booms)
             # Проигрываем звук взрыва танка
             friendly_tank_destroy.play()
-            # Удаляем спрайт
-            self.kill()
+            self.hp -= 1
+            if self.hp < 1:
+                # Удаляем спрайт
+                self.kill()
+            if self.hp_bar:
+                self.hp_bar.damage()
         # Проверяем перезарядилось ли орудие
         if not self.can_shoot:
             # Добавляем время к таймеру
@@ -241,13 +238,13 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
 
     def do(self, code):
         # Стреляем или двигаемся в зависимости от команды
-        self.shoot() if code == TANKS[self.color]['Выстрел'] else self.step(code)
+        self.shoot() if code == KEYS[self.color]['Выстрел'] else self.step(code)
 
     def step(self, code):
         # Проверяем двигается ли танк в данный момент
         if self.not_moves:
             # Список векторов для поворота танка
-            vectors = {TANKS[self.color]['Вправо']: -1, TANKS[self.color]['Влево']: 1}
+            vectors = {KEYS[self.color]['Вправо']: -1, KEYS[self.color]['Влево']: 1}
             # Проверяем является ли команда поворотом
             if code in vectors:
                 # Получаем новый вектор после поворота
@@ -258,7 +255,7 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
                 # Получаем координаты танка
                 pos_x, pos_y = self.rect.x, self.rect.y
                 # Список векторов для передвижения танка
-                steps = {TANKS[self.color]['Вперёд']: -1, TANKS[self.color]['Назад']: 1}
+                steps = {KEYS[self.color]['Вперёд']: -1, KEYS[self.color]['Назад']: 1}
                 # Получаем конечные координаты после хода
                 x, y = pos_x + (TILE_WIDTH * VECTORS[self.vector][0]) * steps[code], \
                        pos_y + (TILE_WIDTH * VECTORS[self.vector][1]) * steps[code]
@@ -291,7 +288,7 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
         self.rect = self.image.get_rect().move(TILE_WIDTH * pos_x, TILE_HEIGHT * pos_y)
 
         # Просчитываем путь танка до базы
-        self.matrix, base_pos = matrix(level_map)
+        self.matrix, base_pos = create_matrix(level_map)
         self.matrix[self.get_pose()[1]][self.get_pose()[0]] = 1
         wave(self.matrix, base_pos)
         self.trail = trail(self.matrix, base_pos)
@@ -315,8 +312,22 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
 
     def update(self):
         # Пытаемся выстрелить по игрокам
-        for tank in friendly_tanks_group.sprites():
-            try_shoot(self, tank, object_matrix, level_map)
+        if not any([try_shoot(self, tank, object_matrix, level_map) for tank in friendly_tanks_group.sprites()]):
+            # Проверяем нашёл ли танк путь до базы
+            if self.trail:
+                # Берём одну команду из пути
+                do = self.trail[0]
+                # Список команд и их векторов
+                vectors = {'Вперёд': 0, 'Влево': 1, 'Назад': 2, 'Вправо': 3}
+                # Поворачиваем на нужный вектор в зависимости от команды
+                for _ in range(abs(vectors[do] - self.vector)):
+                    self.move(('Влево' if vectors[do] - self.vector < 0 else 'Вправо') if
+                              abs(vectors[do] - self.vector) == 3 else ('Влево' if vectors[do] - self.vector > 0 else
+                                                                        'Вправо'))
+                # Проверяем переместился ли танк, ведь ему могут помешать другие танки или препятствия
+                if self.move('Вперёд'):
+                    # Удаляем выполненную команду
+                    self.trail.pop(0)
         # Проверяем идёт ли анимация движения танка
         if self.x_list and self.y_list:
             # Получаем координаты во время анимации движения
@@ -349,27 +360,12 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
             if self.reload > CONSTANTS['RELOAD']:
                 # Записываем, что орудие перезаряжено и обнуляем таймер
                 self.can_shoot, self.reload = True, 0
-        # Проверяем нашёл ли танк путь до базы
-        if self.trail:
-            # Берём одну команду из пути
-            do = self.trail[0]
-            # Список команд и их векторов
-            vectors = {'Вперёд': 0, 'Влево': 1, 'Назад': 2, 'Вправо': 3}
-            # Поворачиваем на нужный вектор в зависимости от команды
-            for _ in range(abs(vectors[do] - self.vector)):
-                self.move(('Влево' if vectors[do] - self.vector < 0 else 'Вправо') if
-                          abs(vectors[do] - self.vector) == 3 else ('Влево' if vectors[do] - self.vector > 0 else
-                                                                    'Вправо'))
-            # Проверяем переместился ли танк, ведь ему могут помешать другие танки или препятствия
-            if self.move('Вперёд'):
-                # Удаляем выполненную команду
-                self.trail.pop(0)
 
     def move(self, code):
         # Проверяем двигается ли танк в данный момент
         if self.not_moves:
             # Список векторов для поворота танка
-            vectors = {TANKS[self.color]['Вправо']: -1, TANKS[self.color]['Влево']: 1}
+            vectors = {'Вправо': -1, 'Влево': 1}
             # Проверяем является ли команда поворотом
             if code in vectors:
                 # Получаем новый вектор после поворота
@@ -380,7 +376,7 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
                 # Получаем координаты танка
                 pos_x, pos_y = self.rect.x, self.rect.y
                 # Список векторов для передвижения танка
-                steps = {TANKS[self.color]['Вперёд']: -1, TANKS[self.color]['Назад']: 1}
+                steps = {'Вперёд': -1, 'Назад': 1}
                 # Получаем конечные координаты после хода
                 x, y = pos_x + (TILE_WIDTH * VECTORS[self.vector][0]) * steps[code], \
                        pos_y + (TILE_WIDTH * VECTORS[self.vector][1]) * steps[code]
@@ -407,31 +403,28 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
 
 class AnimatedSprite(pygame.sprite.Sprite):  # Класс анимированного спрайта
     # Получаем лист спрайтов, кол-во столбцов, кол-во строк, x, y, время анимации
-    # (чем больше тем дольше будет длиться анимация), группа спрайтов и вектор(для поворота изображения)
+    # (чем больше, тем дольше будет длиться анимация), группу спрайтов и вектор(для поворота изображения)
     def __init__(self, sheet, columns, rows, x, y, timing, group, vector=0):
         # Инициализация класса и добавления его в нужную группу спрайтов
         super().__init__(all_animated_sprites, all_sprites, group)
         # Задаём переменные
-        self.frames, self.vector, self.timing = [], vector, timing
+        self.sheet, self.frames, self.vector, self.timing = sheet, [], vector, timing
         # Нарезаем лист спрайтов на отдельные спрайты
-        self.cut_sheet(sheet, columns, rows)
+        self.cut_sheet(columns, rows)
         # Задаём переменные
-        self.cur_frame, self.time, self.sheet = 0, 0, sheet
+        self.cur_frame, self.time = 0, 0
         self.image = self.frames[self.cur_frame]
         self.rect = self.rect.move(x, y)
 
-    def cut_sheet(self, sheet, columns, rows):
+    def cut_sheet(self, columns, rows):
         # Задаём область листа спрайтов
-        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
-                                sheet.get_height() // rows)
+        self.rect = pygame.Rect(0, 0, self.sheet.get_width() // columns, self.sheet.get_height() // rows)
         # Пробегаем по строкам и столбцам
         for j in range(rows):
             for i in range(columns):
-                # Задаём область спрайта
-                frame_location = (self.rect.w * i, self.rect.h * j)
                 # Добавляем спрайт в список
-                self.frames.append(pygame.transform.rotate(sheet.subsurface(pygame.Rect(
-                    frame_location, self.rect.size)), 90 * self.vector))
+                self.frames.append(pygame.transform.rotate(self.sheet.subsurface(pygame.Rect(
+                    (self.rect.w * i, self.rect.h * j), self.rect.size)), 90 * self.vector))
 
     def update(self):
         # Добавляем время к таймеру
@@ -487,20 +480,59 @@ class Bullet(pygame.sprite.Sprite):  # Класс пули
                                                self.rect.y - VECTORS[self.vector][1] * CONSTANTS['VELOCITY'])
 
 
+class HpBar(pygame.sprite.Sprite):
+    def __init__(self, pos_x, pos_y,  color, hp=5):
+        # Инициализация класса и добавления его в нужную группу спрайтов
+        super().__init__(hp_bars_group, all_sprites)
+        # Добавляем текстуру спрайта и задаём переменные
+        self.pos_x, self.pos_y, self.max_hp, self.hp, self.color = pos_x, pos_y, hp, hp, color
+        self.image = hp_bars[self.color][5]
+        self.rect = self.image.get_rect().move(pos_x, pos_y)
+
+    def damage(self):
+        self.hp -= 1
+        if self.hp < 1:
+            self.kill()
+            return
+        self.image = hp_bars[self.color][self.hp]
+        self.rect = self.image.get_rect().move(self.pos_x, self.pos_y)
+
+
+# Подключаем базу данных
+con = sqlite3.connect('Configs.db')
+cur = con.cursor()
+# Получаем настройки из базы данных
+res = cur.execute('''SELECT Types_of_key_assignment.type, doing, btn_name FROM Key_assignment INNER JOIN 
+                     Types_of_key_assignment ON Types_of_key_assignment.id = Key_assignment.id_type''').fetchall()
+# Парсим ответ
+configs = {key: list(i[1:] for i in res if i[0] == key) for key in set(i[0] for i in res)}
+
+# Назначения клавиш
+DATA = {'Зелёный танк': 'G', 'Жёлтый танк': 'Y'}
+KEYS = {DATA[key]: {i[0]: pygame.key.key_code(i[1]) for i in configs[key]} for key in configs.keys()}
+
+# Запускаем меню(конструкция для правильной работы интерфейса)
+menu() if __name__ == '__main__' else None
+
+# Загрузка уровня
+level_map, CONSTANTS = select_level_menu()
+
+# Создание матрицы карты(пустые клетки / металлические стены)
+object_matrix = object_matrix(level_map)
+# Создаём полоски хп
+green_hp_bar, yellow_hp_bar = HpBar(10, 10, color='G'), HpBar(1100, 10, color='Y')
 # Генерируем уровень
 green_tank, yellow_tank, base = generate_level(level_map)
-# Запускаем меню(конструкция для правильной работы интерфейса)
-menu(screen) if __name__ == '__main__' else None
+
 # Заполняем экран белым цветом
 screen.fill('white')
-# Игра идёт
-game_running = True
 # Запускаем часы
 clock = pygame.time.Clock()
 # Проигрываем звук мотора танков
 engine_music.play(-1)
+
 # Начинаем игру
-while game_running:
+while True:
     # Проверяем живы ли игроки
     if not friendly_tanks_group:
         # Поражение
@@ -515,12 +547,12 @@ while game_running:
         # Проверяем нажал ли игрок на клавиши
         if event.type == pygame.KEYDOWN:
             # Проверяем ходят ли игроки
-            if event.scancode in TANKS['G'].values():
-                green_tank.do(event.scancode)
-            if event.scancode in TANKS['Y'].values():
-                yellow_tank.do(event.scancode)
+            if event.key in KEYS['G'].values():
+                green_tank.do(event.key)
+            if event.key in KEYS['Y'].values():
+                yellow_tank.do(event.key)
             # Проверяем нажата ли клавиша esc
-            if event.type == pygame.KEYDOWN and event.scancode == 41:
+            if event.key == 27:
                 # Пауза
                 pause(screen)
     # Обновляем все спрайты
@@ -531,6 +563,7 @@ while game_running:
     enemy_tanks_group.draw(screen)
     bullets_group.draw(screen)
     all_animated_sprites.draw(screen)
+    hp_bars_group.draw(screen)
     grass_group.draw(screen)
     pygame.display.flip()
     clock.tick(FPS)
