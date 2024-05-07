@@ -1,6 +1,4 @@
 # Импорт библиотек
-import sys
-
 import pygame
 import sqlite3
 from tank_algoritm import try_shoot, object_matrix, wave, create_matrix, trail
@@ -37,14 +35,14 @@ tile_images = {'unbreakable_wall': load_image('unbreakable_wall.png'),
                'wall': [load_image('wall_6.png', -1), load_image('wall_5.png', -1), load_image('wall_4.png', -1),
                         load_image('wall_3.png', -1), load_image('wall_2.png', -1), load_image('wall_1.png', -1),
                         load_image('wall.png', -1)]}
-hp_bars = {'G': {i: load_image(f'green_hp_bar_{i}.png', -1) for i in range(1, 6)},
-           'Y': {i: load_image(f'yellow_hp_bar_{i}.png', -1) for i in range(1, 6)}}
+hp_bars = {'R': {i: load_image(f'red_hp_bar_{i}.png', -1) for i in range(1, 6)},
+           'B': {i: load_image(f'blue_hp_bar_{i}.png', -1) for i in range(1, 6)}}
 fire_image = load_image("fire.png", -1)
 boom_image = load_image("booms.png", -1)
 spawn_image = load_image("spawn.png", -1)
-tanks = {'G': load_image('green_tank.png', -1), 'Y': load_image('yellow_tank.png', -1),
+tanks = {'R': load_image('red_tank_1.png', -1), 'B': load_image('blue_tank.png', -1),
          'W': load_image('white_tank.png', -1)}
-bullets = {'G': load_image('green_bullet.png', -1), 'Y': load_image('yellow_bullet.png', -1),
+bullets = {'R': load_image('red_bullet.png', -1), 'B': load_image('blue_bullet.png', -1),
            'W': load_image('white_bullet.png', -1)}
 
 # Загрузка музыки
@@ -56,7 +54,7 @@ enemy_tank_destroy = load_music('enemy_tank_destroy.wav')
 
 
 def generate_level(level):  # Создание спрайтов по полученному уровню
-    green_tank, yellow_tank, base = None, None, None
+    red_tank, blue_tank = None, None
     # Перебираем каждый символ уровня и создаём нужный объект
     for y in range(len(level)):
         for x in range(len(level[y])):
@@ -66,8 +64,6 @@ def generate_level(level):  # Создание спрайтов по получ�
                 Tile('unbreakable_wall', x, y)
             elif level[y][x] == '=':
                 Tile('water', x, y)
-            elif level[y][x] == 'S':
-                EnemySpawn(x, y)
             elif level[y][x] == '/':
                 Tile('empty', x, y)
                 Tile('grass', x, y)
@@ -76,15 +72,17 @@ def generate_level(level):  # Создание спрайтов по получ�
                 Wall(x, y)
             elif level[y][x] == 'B':
                 Tile('empty', x, y)
-                base = Base(x, y)
-            elif level[y][x] == 'G':
+                Base(x, y)
+            elif level[y][x] == 'S':
+                EnemySpawn(x, y)
+            elif level[y][x] == '1':
                 Tile('empty', x, y)
-                green_tank = Tank(x, y, CONSTANTS['GREEN_TANK_VECTOR'], 'G', hp_bar=green_hp_bar)
-            elif level[y][x] == 'Y':
+                red_tank = Tank(x, y, CONSTANTS['RED_TANK_VECTOR'], 'R', hp_bar=HpBar(10, 10, color='R'))
+            elif level[y][x] == '2':
                 Tile('empty', x, y)
-                yellow_tank = Tank(x, y, CONSTANTS['YELLOW_TANK_VECTOR'], 'Y', hp_bar=yellow_hp_bar)
-    # Возвращаем танки и базу
-    return green_tank, yellow_tank, base
+                blue_tank = Tank(x, y, CONSTANTS['BLUE_TANK_VECTOR'], 'B', hp_bar=HpBar(1100, 10, color='B'))
+    # Возвращаем танки
+    return red_tank, blue_tank
 
 
 class Tile(pygame.sprite.Sprite):  # Класс объекта
@@ -214,6 +212,9 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
                 self.x_list, self.y_list = [], []
                 # Танк закончил движение
                 self.not_moves = True
+        # Проверяем идёт ли анимация поворота танка
+        if True:
+            pass
         # Проверяем не попала ли в танк вражеская пуля
         if pygame.sprite.spritecollideany(self, pygame.sprite.Group([i for i in bullets_group.sprites()
                                                                      if i.color == 'W'])):
@@ -262,8 +263,11 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
                 # Передвигаем танк
                 self.rect = self.image.get_rect().move(x, y)
                 # Проверяем пересекается ли танк с препятствиями или другими танками
-                cross = pygame.sprite.spritecollideany(self, cant_move_sprites) or pygame.sprite.spritecollideany(
-                    self, pygame.sprite.Group(green_tank if self.color == 'Y' else yellow_tank))
+                cross = pygame.sprite.spritecollideany(self, cant_move_sprites) or \
+                        pygame.sprite.spritecollideany(self, enemy_tanks_group)
+                if not [red_tank if self.color == 'B' else blue_tank]:
+                    cross = cross or pygame.sprite.spritecollideany(self, pygame.sprite.Group(
+                        red_tank if self.color == 'B' else blue_tank))
                 # Передвигаем танк обратно
                 self.rect = self.image.get_rect().move(pos_x, pos_y)
                 # Проверяем пересечётся ли танк при ходе
@@ -345,7 +349,7 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
                 self.not_moves = True
         # Проверяем не попала ли в танк вражеская пуля
         if pygame.sprite.spritecollideany(self, pygame.sprite.Group([i for i in bullets_group.sprites()
-                                                                     if i.color in 'GY'])):
+                                                                     if i.color in 'RB'])):
             # Создаём анимацию взрыва
             AnimatedSprite(boom_image, 15, 1, self.rect.x, self.rect.y, 2, all_booms)
             # Проигрываем звук взрыва танка
@@ -463,10 +467,10 @@ class Bullet(pygame.sprite.Sprite):  # Класс пули
 
     def update(self):
         # Проверяем врезалась ли пуля в стены, вражеские пули или танки
-        if pygame.sprite.spritecollideany(self, walls_group) or (self.color in 'GY' and pygame.sprite.spritecollideany(
+        if pygame.sprite.spritecollideany(self, walls_group) or (self.color in 'RB' and pygame.sprite.spritecollideany(
                 self, pygame.sprite.Group([i for i in bullets_group.sprites() if i.color == 'W']))) or \
                 (self.color == 'W' and pygame.sprite.spritecollideany(self, pygame.sprite.Group(
-                [i for i in bullets_group.sprites() if i.color in 'GY']))):
+                [i for i in bullets_group.sprites() if i.color in 'RB']))):
             # Создаём анимацию взрыва
             AnimatedSprite(boom_image, 15, 1, self.rect.x - 26, self.rect.y - 26, 2, all_booms)
             # Удаляем спрайт
@@ -506,10 +510,9 @@ res = cur.execute('''SELECT Types_of_key_assignment.type, doing, btn_name FROM K
                      Types_of_key_assignment ON Types_of_key_assignment.id = Key_assignment.id_type''').fetchall()
 # Парсим ответ
 configs = {key: list(i[1:] for i in res if i[0] == key) for key in set(i[0] for i in res)}
-
 # Назначения клавиш
-DATA = {'Зелёный танк': 'G', 'Жёлтый танк': 'Y'}
-KEYS = {DATA[key]: {i[0]: pygame.key.key_code(i[1]) for i in configs[key]} for key in configs.keys()}
+KEYS = {{'Зелёный танк': 'R', 'Жёлтый танк': 'B'}[key]: {i[0]: pygame.key.key_code(i[1]) for i in configs[key]}
+        for key in configs.keys()}
 
 # Запускаем меню(конструкция для правильной работы интерфейса)
 menu() if __name__ == '__main__' else None
@@ -519,10 +522,8 @@ level_map, CONSTANTS = select_level_menu()
 
 # Создание матрицы карты(пустые клетки / металлические стены)
 object_matrix = object_matrix(level_map)
-# Создаём полоски хп
-green_hp_bar, yellow_hp_bar = HpBar(10, 10, color='G'), HpBar(1100, 10, color='Y')
 # Генерируем уровень
-green_tank, yellow_tank, base = generate_level(level_map)
+red_tank, blue_tank = generate_level(level_map)
 
 # Заполняем экран белым цветом
 screen.fill('white')
@@ -547,10 +548,10 @@ while True:
         # Проверяем нажал ли игрок на клавиши
         if event.type == pygame.KEYDOWN:
             # Проверяем ходят ли игроки
-            if event.key in KEYS['G'].values():
-                green_tank.do(event.key)
-            if event.key in KEYS['Y'].values():
-                yellow_tank.do(event.key)
+            if red_tank and event.key in KEYS['R'].values():
+                red_tank.do(event.key)
+            if blue_tank and event.key in KEYS['B'].values():
+                blue_tank.do(event.key)
             # Проверяем нажата ли клавиша esc
             if event.key == 27:
                 # Пауза

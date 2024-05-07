@@ -6,6 +6,18 @@ import pygame
 import sqlite3
 
 
+# Основные константы
+FPS = 60
+TILE_WIDTH = TILE_HEIGHT = 60
+VECTORS = {0: [0, 1], 1: [1, 0], 2: [0, -1], 3: [-1, 0]}
+clock = pygame.time.Clock()
+
+# Запускаем pygame
+pygame.init()
+# Создание группы спрайтов
+all_tiles = pygame.sprite.Group()
+
+
 def load_level(filename):  # Получаем название уровня
     lines = open(os.path.join('./levels', filename)).readlines()
     line, level_map,  = lines.pop(0).strip(), []
@@ -43,13 +55,6 @@ def load_music(name):  # Получаем имя
     # Возвращаем музыку(конструкция для запуска как exe-файл)
     return pygame.mixer.Sound(os.path.join(sys._MEIPASS, path) if hasattr(sys, "_MEIPASS") else path)
 
-
-# Запускаем pygame
-pygame.init()
-
-# Основные константы
-FPS = 60
-clock = pygame.time.Clock()
 
 # Загрузка музыки
 menu_music = load_music('menu_music.wav')
@@ -184,6 +189,15 @@ class KeyAssignmentButton(pygame.sprite.Sprite):
                                       self.Rect.height / 2 - self.Text.get_rect().height / 2])
         # Накладываем поверхность поверх экрана
         self.screen.blit(self.Surface, self.Rect)
+
+
+class Tile(pygame.sprite.Sprite):  # Класс объекта
+    def __init__(self, tile_type, pos_x, pos_y):
+        # Инициализация класса и добавления его в нужные группы спрайтов
+        super().__init__(all_tiles)
+        # Добавляем текстуру спрайта
+        self.image = tile_images[tile_type]
+        self.rect = self.image.get_rect().move(TILE_WIDTH * pos_x, TILE_HEIGHT * pos_y)
 
 
 def menu(restart=False):
@@ -327,7 +341,29 @@ def select_level_menu():
                      'Выбор уровня', 'Arial', 70)
                 Text(screen, (screen.get_width() - 1000) // 2, screen.get_height() // 2 - 260, 1000, 120,
                      f'"{levels[current_level % len(levels)].split(".")[0]}"', 'Arial', 50)
+        buttons.update()
         buttons.draw(screen)
+        pygame.display.flip()
+        clock.tick(FPS)
+
+
+def level_editor_menu():
+    # Создание экрана
+    screen = pygame.display.set_mode()
+    # Создаём группу для кнопок
+    buttons = pygame.sprite.Group()
+    # Создаём фон нужного размера
+    fon = pygame.transform.scale(load_image('fon.png'), (screen.get_width(), screen.get_height()))
+    # Накладываем фон на экран
+    screen.blit(fon, (0, 0))
+
+    # Цикл
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN and event.key == 27:
+                # Запускаем меню
+                menu(True)
+                return
         pygame.display.flip()
         clock.tick(FPS)
     
