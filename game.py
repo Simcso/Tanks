@@ -53,6 +53,12 @@ friendly_tank_destroy = load_music('friendly_tank_destroy.wav')
 enemy_tank_destroy = load_music('enemy_tank_destroy.wav')
 
 
+def rotate_img(image, angle, cords):
+    rotated_image = pygame.transform.rotate(image, angle)
+    new_rect = rotated_image.get_rect(center=image.get_rect(topleft=cords).center)
+    return rotated_image, new_rect
+
+
 def generate_level(level):  # Создание спрайтов по полученному уровню
     red_tank, blue_tank = None, None
     # Перебираем каждый символ уровня и создаём нужный объект
@@ -178,7 +184,7 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
         # Инициализация класса и добавления его в нужную группу спрайтов
         super().__init__(friendly_tanks_group, all_sprites)
         # Добавляем текстуру спрайта с нужным вектором и задаём переменные
-        self.color, self.hp_bar, self.hp, self.x_list, self.y_list = color, hp_bar, 5, [], []
+        self.color, self.hp_bar, self.hp, self.x_list, self.y_list, self.rotate = color, hp_bar, 5, [], [], []
         self.image, self.reload = pygame.transform.rotate(tanks[self.color], 90 * vector), 0
         self.vector, self.can_shoot, self.not_moves = vector, True, True
         self.rect = self.image.get_rect().move(TILE_WIDTH * pos_x, TILE_HEIGHT * pos_y)
@@ -213,8 +219,14 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
                 # Танк закончил движение
                 self.not_moves = True
         # Проверяем идёт ли анимация поворота танка
-        if True:
-            pass
+        if self.rotate:
+            # Переворачиваем спрайт в зависимости от вектора
+            self.image, self.rect = rotate_img(tanks[self.color], self.rotate.pop(0) if len(self.rotate) > 1 else self.rotate[0], self.rotate_cords)
+            if len(self.rotate) <= 1:
+                # Танк закончил движение
+                self.not_moves = True
+                self.rotate = []
+                print('Поворот окончен')
         # Проверяем не попала ли в танк вражеская пуля
         if pygame.sprite.spritecollideany(self, pygame.sprite.Group([i for i in bullets_group.sprites()
                                                                      if i.color == 'W'])):
@@ -243,16 +255,25 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
 
     def step(self, code):
         # Проверяем двигается ли танк в данный момент
+        print('Кнопка нажата')
         if self.not_moves:
             # Список векторов для поворота танка
             vectors = {KEYS[self.color]['Вправо']: -1, KEYS[self.color]['Влево']: 1}
             # Проверяем является ли команда поворотом
             if code in vectors:
+                print('Кнопка поворота')
                 # Получаем новый вектор после поворота
-                self.vector = (self.vector + vectors[code]) % 4
-                # Переворачиваем спрайт в зависимости от вектора
-                self.image = pygame.transform.rotate(self.image, 90 * vectors[code])
+                new_vector = (self.vector + vectors[code]) % 4
+                self.rotate = list(range(self.vector * 90, new_vector * 90 + vectors[code], vectors[code]))
+                print(self.vector * 90, new_vector * 90 + vectors[code], vectors[code])
+                print(self.vector, new_vector)
+                print(self.rotate)
+                self.rotate_cords = (self.rect.x, self.rect.y)
+                self.vector = new_vector
+                # Танк начал движение
+                self.not_moves = False
             else:
+                print('Едем')
                 # Получаем координаты танка
                 pos_x, pos_y = self.rect.x, self.rect.y
                 # Список векторов для передвижения танка
@@ -566,5 +587,8 @@ while True:
     all_animated_sprites.draw(screen)
     hp_bars_group.draw(screen)
     grass_group.draw(screen)
+    pygame.draw.rect(screen, (255, 0, 0), red_tank.image.get_rect(center=red_tank.image.get_rect(topleft=
+                                                                                                 (red_tank.rect.x, red_tank.rect.y)).center), 2)
+
     pygame.display.flip()
     clock.tick(FPS)
