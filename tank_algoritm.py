@@ -1,6 +1,3 @@
-# Импорт библиотек
-from math import ceil
-
 # Ширина клетки
 TILE_WIDTH = 60
 
@@ -16,8 +13,8 @@ def object_matrix(level_map):  # Получаем карту уровня
 def try_shoot(tank, enemy, matrix, level):  # Получаем класс танка(стрелка), класс танка(мишени),
     # матрицу препятствий и карту уровня
     # получаем координаты(индексы для матрицы препятствий) танков
-    tank_x, tank_y = ceil(tank.rect.x / TILE_WIDTH), ceil(tank.rect.y / TILE_WIDTH)
-    enemy_x, enemy_y = ceil(enemy.rect.x / TILE_WIDTH), ceil(enemy.rect.y / TILE_WIDTH)
+    tank_x, tank_y = round(tank.rect.x / TILE_WIDTH), round(tank.rect.y / TILE_WIDTH)
+    enemy_x, enemy_y = round(enemy.rect.x / TILE_WIDTH), round(enemy.rect.y / TILE_WIDTH)
     # Проверяем находится ли танк "мишень" в кустах и пересекаются ли танки на уровне
     if matrix[enemy_y][enemy_x] != 1 and (tank.rect.x == enemy.rect.x or tank.rect.y == enemy.rect.y):
         # Проверяем есть ли на пути стрельбы препятствия в виде металлических стен
@@ -31,7 +28,7 @@ def try_shoot(tank, enemy, matrix, level):  # Получаем класс тан
                 tank.not_moves = True
                 tank.move(('Влево' if vector - tank.vector < 0 else 'Вправо') if abs(vector - tank.vector) == 3 else (
                     'Влево' if vector - tank.vector > 0 else 'Вправо'))
-            # Выстрел!
+            # Выстрел...ВЫСТРЕЛ!
             tank.shoot()
             # Заново просчитываем путь танка до базы
             tank.create_matrix, base_pos = create_matrix(level)

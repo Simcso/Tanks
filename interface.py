@@ -12,6 +12,9 @@ TILE_WIDTH = TILE_HEIGHT = 60
 VECTORS = {0: [0, 1], 1: [1, 0], 2: [0, -1], 3: [-1, 0]}
 clock = pygame.time.Clock()
 
+# Затычка
+tile_images = []
+
 # Запускаем pygame
 pygame.init()
 # Создание группы спрайтов
@@ -400,7 +403,10 @@ def pause(screen):
                 pygame.mixer.unpause()
                 return  # Продолжаем игру
         pygame.display.flip()
-        clock.tick(FPS)
+        try:
+            clock.tick(FPS)
+        except:
+            pass
 
 
 def lose(screen):
@@ -423,6 +429,7 @@ def lose(screen):
         clock.tick(FPS)
     # Создаём текст
     Text(screen, (screen.get_width() - 450) // 2, (screen.get_height() - 340) // 2, 450, 120, 'Поражение', 'Arial', 100)
+    pygame.display.flip()
     # Цикл
     while True:
         # Проверяем все ивенты
@@ -458,7 +465,9 @@ def win(screen):
         pygame.display.flip()
         clock.tick(FPS)
     # Создаём текст
+
     Text(screen, (screen.get_width() - 450) // 2, (screen.get_height() - 340) // 2, 450, 120, 'Победа', 'Arial', 100)
+    pygame.display.flip()
     # Цикл
     while True:
         # Проверяем все ивенты

@@ -53,6 +53,12 @@ friendly_tank_destroy = load_music('friendly_tank_destroy.wav')
 enemy_tank_destroy = load_music('enemy_tank_destroy.wav')
 
 
+def rotate_img(image, angle, cords):
+    rotated_image = pygame.transform.rotate(image, angle)
+    new_rect = rotated_image.get_rect(center=image.get_rect(topleft=cords).center)
+    return rotated_image, new_rect
+
+
 def generate_level(level):  # Создание спрайтов по полученному уровню
     red_tank, blue_tank = None, None
     # Перебираем каждый символ уровня и создаём нужный объект
@@ -178,23 +184,33 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
         # Инициализация класса и добавления его в нужную группу спрайтов
         super().__init__(friendly_tanks_group, all_sprites)
         # Добавляем текстуру спрайта с нужным вектором и задаём переменные
-        self.color, self.hp_bar, self.hp, self.x_list, self.y_list = color, hp_bar, 5, [], []
+        self.color, self.hp_bar, self.hp, self.x_list, self.y_list, self.rotate = color, hp_bar, 5, [], [], []
         self.image, self.reload = pygame.transform.rotate(tanks[self.color], 90 * vector), 0
         self.vector, self.can_shoot, self.not_moves = vector, True, True
         self.rect = self.image.get_rect().move(TILE_WIDTH * pos_x, TILE_HEIGHT * pos_y)
 
     def shoot(self):  # Функция выстрела
-        # Проверяем перезарядилось ли орудие
-        if self.can_shoot:
+        # Проверяем перезарядилось ли орудие и не поворачивается ли танк
+        if self.can_shoot and not self.rotate:
             # Создаём пулю
             Bullet(self.rect.x, self.rect.y, self.vector, self.color)
             # Список сдвигов по вектору
-            vectors = {0: [0, -60], 1: [-60, -12.5], 2: [-12.5, 60], 3: [60, 0]}
+            vectors = {0: [0, -60], 1: [-60, 0], 2: [0, 60], 3: [60, 0]}
             # Создаём анимацию выстрела
             AnimatedSprite(fire_image, 3, 1, self.rect.x + vectors[self.vector][0],
                            self.rect.y + vectors[self.vector][1], 10, '', self.vector)
             # Орудие перезаряжается
             self.can_shoot = False
+
+    def damage(self):
+        # Проигрываем звук взрыва танка
+        friendly_tank_destroy.play()
+        self.hp -= 1
+        if self.hp < 1:
+            # Удаляем спрайт
+            self.kill()
+        if self.hp_bar:
+            self.hp_bar.damage()
 
     def update(self):
         # Проверяем идёт ли анимация движения танка
@@ -213,21 +229,12 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
                 # Танк закончил движение
                 self.not_moves = True
         # Проверяем идёт ли анимация поворота танка
-        if True:
-            pass
-        # Проверяем не попала ли в танк вражеская пуля
-        if pygame.sprite.spritecollideany(self, pygame.sprite.Group([i for i in bullets_group.sprites()
-                                                                     if i.color == 'W'])):
-            # Создаём анимацию взрыва
-            AnimatedSprite(boom_image, 15, 1, self.rect.x, self.rect.y, 2, all_booms)
-            # Проигрываем звук взрыва танка
-            friendly_tank_destroy.play()
-            self.hp -= 1
-            if self.hp < 1:
-                # Удаляем спрайт
-                self.kill()
-            if self.hp_bar:
-                self.hp_bar.damage()
+        if self.rotate:
+            # Переворачиваем спрайт в зависимости от вектора
+            self.image, self.rect = rotate_img(tanks[self.color], self.rotate.pop(0), self.rotate_cords)
+            if not self.rotate:
+                # Танк закончил движение
+                self.not_moves, self.rotate = True, []
         # Проверяем перезарядилось ли орудие
         if not self.can_shoot:
             # Добавляем время к таймеру
@@ -249,9 +256,11 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
             # Проверяем является ли команда поворотом
             if code in vectors:
                 # Получаем новый вектор после поворота
+                self.rotate = list(range(self.vector * 90, (self.vector + vectors[code]) * 90 + vectors[code], vectors[code]))
+                self.rotate_cords = (self.rect.x, self.rect.y)
                 self.vector = (self.vector + vectors[code]) % 4
-                # Переворачиваем спрайт в зависимости от вектора
-                self.image = pygame.transform.rotate(self.image, 90 * vectors[code])
+                # Танк начал движение
+                self.not_moves = False
             else:
                 # Получаем координаты танка
                 pos_x, pos_y = self.rect.x, self.rect.y
@@ -266,8 +275,8 @@ class Tank(pygame.sprite.Sprite):  # Класс танка(игрока)
                 cross = pygame.sprite.spritecollideany(self, cant_move_sprites) or \
                         pygame.sprite.spritecollideany(self, enemy_tanks_group)
                 if not [red_tank if self.color == 'B' else blue_tank]:
-                    cross = cross or pygame.sprite.spritecollideany(self, pygame.sprite.Group(
-                        red_tank if self.color == 'B' else blue_tank))
+                    cross = cross or pygame.sprite.spritecollideany(self, pygame.sprite.Group(red_tank
+                                                                                              if self.color == 'B' else blue_tank))
                 # Передвигаем танк обратно
                 self.rect = self.image.get_rect().move(pos_x, pos_y)
                 # Проверяем пересечётся ли танк при ходе
@@ -286,7 +295,7 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
         # Инициализация класса и добавления его в нужную группу спрайтов
         super().__init__(enemy_tanks_group, all_sprites)
         # Добавляем текстуру спрайта с нужным вектором и задаём переменные
-        self.color, self.x_list, self.y_list = color, [], []
+        self.color, self.x_list, self.y_list, self.rotate = color, [], [], []
         self.image, self.reload = tanks[self.color], 0
         self.vector, self.can_shoot, self.not_moves = vector, True, True
         self.rect = self.image.get_rect().move(TILE_WIDTH * pos_x, TILE_HEIGHT * pos_y)
@@ -299,24 +308,30 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
 
     def get_pose(self):
         # Возвращаем координаты(индексы для матрицы препятствий) танка
-        return self.rect.x // TILE_WIDTH, self.rect.y // TILE_WIDTH
+        return round(self.rect.x / TILE_WIDTH), round(self.rect.y / TILE_WIDTH)
 
     def shoot(self):  # Функция выстрела
         # Проверяем перезарядилось ли орудие
-        if self.can_shoot:
+        if self.can_shoot and not self.rotate:
             # Создаём пулю
             Bullet(self.rect.x, self.rect.y, self.vector, self.color)
             # Список сдвигов по вектору
-            vectors = {0: [0, -60], 1: [-60, -12.5], 2: [-12.5, 60], 3: [60, 0]}
+            vectors = {0: [0, -60], 1: [-60, 0], 2: [0, 60], 3: [60, 0]}
             # Создаём анимацию выстрела
             AnimatedSprite(fire_image, 3, 1, self.rect.x + vectors[self.vector][0],
                            self.rect.y + vectors[self.vector][1], 10, '', self.vector)
             # Орудие перезаряжается
             self.can_shoot = False
 
+    def damage(self):
+        # Проигрываем звук взрыва танка
+        enemy_tank_destroy.play()
+        # Удаляем спрайт
+        self.kill()
+
     def update(self):
         # Пытаемся выстрелить по игрокам
-        if not any([try_shoot(self, tank, object_matrix, level_map) for tank in friendly_tanks_group.sprites()]):
+        if not self.rotate and not any([try_shoot(self, tank, object_matrix, level_map) for tank in friendly_tanks_group.sprites()]):
             # Проверяем нашёл ли танк путь до базы
             if self.trail:
                 # Берём одну команду из пути
@@ -347,15 +362,13 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
                 self.x_list, self.y_list = [], []
                 # Танк закончил движение
                 self.not_moves = True
-        # Проверяем не попала ли в танк вражеская пуля
-        if pygame.sprite.spritecollideany(self, pygame.sprite.Group([i for i in bullets_group.sprites()
-                                                                     if i.color in 'RB'])):
-            # Создаём анимацию взрыва
-            AnimatedSprite(boom_image, 15, 1, self.rect.x, self.rect.y, 2, all_booms)
-            # Проигрываем звук взрыва танка
-            enemy_tank_destroy.play()
-            # Удаляем спрайт
-            self.kill()
+        # Проверяем идёт ли анимация поворота танка
+        if self.rotate:
+            # Переворачиваем спрайт в зависимости от вектора
+            self.image, self.rect = rotate_img(tanks[self.color], self.rotate.pop(0), self.rotate_cords)
+            if not self.rotate:
+                # Танк закончил движение
+                self.not_moves, self.rotate = True, []
         # Проверяем перезарядилось ли орудие
         if not self.can_shoot:
             # Добавляем время к таймеру
@@ -372,10 +385,12 @@ class Enemy(pygame.sprite.Sprite):  # Класс танка(противника
             vectors = {'Вправо': -1, 'Влево': 1}
             # Проверяем является ли команда поворотом
             if code in vectors:
+                self.rotate = list(range(self.vector * 90, (self.vector + vectors[code]) * 90 + vectors[code], vectors[code]))
+                self.rotate_cords = (self.rect.x, self.rect.y)
                 # Получаем новый вектор после поворота
                 self.vector = (self.vector + vectors[code]) % 4
-                # Переворачиваем спрайт в зависимости от вектора
-                self.image = pygame.transform.rotate(self.image, 90 * vectors[code])
+                # Танк начал движение
+                self.not_moves = False
             else:
                 # Получаем координаты танка
                 pos_x, pos_y = self.rect.x, self.rect.y
@@ -413,22 +428,16 @@ class AnimatedSprite(pygame.sprite.Sprite):  # Класс анимированн
         super().__init__(all_animated_sprites, all_sprites, group)
         # Задаём переменные
         self.sheet, self.frames, self.vector, self.timing = sheet, [], vector, timing
+        # Задаём область листа спрайтов
+        self.rect = pygame.Rect(0, 0, self.sheet.get_width() // columns, self.sheet.get_height() // rows)
         # Нарезаем лист спрайтов на отдельные спрайты
-        self.cut_sheet(columns, rows)
+        self.frames = [pygame.transform.rotate(self.sheet.subsurface(
+            pygame.Rect((self.rect.w * i, self.rect.h * j), self.rect.size)), 90 * self.vector)
+            for i in range(columns) for j in range(rows)]
         # Задаём переменные
         self.cur_frame, self.time = 0, 0
         self.image = self.frames[self.cur_frame]
         self.rect = self.rect.move(x, y)
-
-    def cut_sheet(self, columns, rows):
-        # Задаём область листа спрайтов
-        self.rect = pygame.Rect(0, 0, self.sheet.get_width() // columns, self.sheet.get_height() // rows)
-        # Пробегаем по строкам и столбцам
-        for j in range(rows):
-            for i in range(columns):
-                # Добавляем спрайт в список
-                self.frames.append(pygame.transform.rotate(self.sheet.subsurface(pygame.Rect(
-                    (self.rect.w * i, self.rect.h * j), self.rect.size)), 90 * self.vector))
 
     def update(self):
         # Добавляем время к таймеру
@@ -465,21 +474,24 @@ class Bullet(pygame.sprite.Sprite):  # Класс пули
         self.cords = {0: [26, -7], 1: [-7, 26], 2: [26, 60], 3: [60, 26]}
         self.rect = self.image.get_rect().move(pos_x + self.cords[self.vector][0], pos_y + self.cords[self.vector][1])
 
+    def damage(self):
+        # Создаём анимацию взрыва и удаляем спрайт
+        AnimatedSprite(boom_image, 15, 1, self.rect.x - 26, self.rect.y - 26, 2, all_booms)
+        self.kill()
+
     def update(self):
-        # Проверяем врезалась ли пуля в стены, вражеские пули или танки
-        if pygame.sprite.spritecollideany(self, walls_group) or (self.color in 'RB' and pygame.sprite.spritecollideany(
-                self, pygame.sprite.Group([i for i in bullets_group.sprites() if i.color == 'W']))) or \
-                (self.color == 'W' and pygame.sprite.spritecollideany(self, pygame.sprite.Group(
-                [i for i in bullets_group.sprites() if i.color in 'RB']))):
-            # Создаём анимацию взрыва
-            AnimatedSprite(boom_image, 15, 1, self.rect.x - 26, self.rect.y - 26, 2, all_booms)
-            # Удаляем спрайт
-            self.kill()
-        # Проверяем попала ли пуля в зону взрыва
-        if pygame.sprite.spritecollideany(self, all_booms):
-            # Удаляем спрайт
-            self.kill()
-        # Перемещаем пулю
+        # Проверяем врезался ли снаряд в стены, танки или в другие снаряды
+        cross = [pygame.sprite.spritecollideany(self, walls_group),
+                 pygame.sprite.spritecollideany(self, [*friendly_tanks_group, *[i for i in bullets_group if i.color in 'RB']]
+                 if self.color == 'W' else [*enemy_tanks_group, *[i for i in bullets_group if i.color in 'W']])]
+        # Удаляем снаряд если он врезался во что либо
+        self.damage() if any(cross) else None
+        for i in cross:
+            try:
+                i.damage()
+            except:
+                pass
+        # Перемещаем снаряд
         self.rect = self.image.get_rect().move(self.rect.x - VECTORS[self.vector][0] * CONSTANTS['VELOCITY'],
                                                self.rect.y - VECTORS[self.vector][1] * CONSTANTS['VELOCITY'])
 
@@ -566,5 +578,15 @@ while True:
     all_animated_sprites.draw(screen)
     hp_bars_group.draw(screen)
     grass_group.draw(screen)
+    for tank in enemy_tanks_group:
+        pygame.draw.rect(screen, (255, 0, 0),
+                         tank.image.get_rect(center=tank.image.get_rect(topleft=(tank.rect.x, tank.rect.y)).center), 2)
+    for sprite in all_animated_sprites:
+        pygame.draw.rect(screen, (0, 255, 0),
+                         sprite.image.get_rect(center=sprite.image.get_rect(topleft=(sprite.rect.x, sprite.rect.y)).center), 2)
+    #for bullet in bullets_group:
+    #    pygame.draw.rect(screen, (0, 0, 255),
+    #                     bullet.image.get_rect(center=bullet.image.get_rect(topleft=(bullet.rect.x, bullet.rect.y)).center), 2)
+
     pygame.display.flip()
     clock.tick(FPS)
